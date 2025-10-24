@@ -92,7 +92,7 @@ class OPM150():
         self._filter: float = 1.0
         self._aperture: float = 7.0
 
-        self.opm_comm_max_retries: int = 800
+        self._opm_comm_max_retries: int = 800
 
         self._opm_fw: str = None
         self._opm_serial: str = None
@@ -224,7 +224,7 @@ class OPM150():
             raise Exception("recive error: port not open.")
         msg = b""
         i = 0
-        while i < self.opm_comm_max_retries:
+        while i < self._opm_comm_max_retries:
             if self._device.getQueueStatus() > 0: # check if bytes in buffer
                 msg = self._device.read(self._device.getQueueStatus()) # read entire buffer
                 while not msg.endswith(b'\r'): # append buffer until '\r' is found
@@ -326,7 +326,7 @@ class OPM150():
         if wavelength not in range(self._opm_detector_min_wavelength, self._opm_detector_max_wavelength + 1):
             return False
         
-        self._wavelength = wavelength
+        tmp_wavelength = wavelength
         wavelength = str(wavelength).zfill(4) # convert to string append 0 at beginning of wavelength if wavelength is not 4 bytes long
 
         self._opm_send("L")
@@ -335,6 +335,7 @@ class OPM150():
         recv = self._opm_recv()
 
         if recv.count("KF:") > 0:
+            self._wavelength = tmp_wavelength
             self._sensitivity = float(recv.replace("KF:", '').replace(',', '.').strip()) # retrieve correction factor from OPM150
             return True
         return False
@@ -377,14 +378,12 @@ class OPM150():
             self._gain = gain
             return True
         
-        if self._gain != "auto-gain":
-            self._gain = gain
-        
-        self._autogain_gain = int(self._gain_steps[gain][1:])
-        
         self._opm_send(self._gain_steps[gain])
         recv = self._opm_recv()
         if recv == "{} OK".format(self._gain_steps[gain]):
+            if self._gain != "auto-gain":
+                self._gain = gain
+            self._autogain_gain = int(self._gain_steps[gain][1:])
             return True
         return False
 
@@ -398,7 +397,7 @@ class OPM150():
             return tmp_amplitude
         
         if self._autogain_gain is None:
-            self._autogain_gain = int(self._gain_steps[self.opm_get_gain()][1:]) # get gain as int if not already set
+            self.opm_get_gain() # get gain as int if not already set
 
         amplitude = float(tmp_amplitude[:-2].replace(",", "."))
 
