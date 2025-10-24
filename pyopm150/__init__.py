@@ -104,6 +104,58 @@ class OPM150():
         self._opm_detector_max_wavelength: int = None
         self._opm_detector_is_integrating_sphere:  bool = False
     
+    @property
+    def unit(self) -> str:
+        return self._units[self._unit]
+    
+    @property
+    def filter(self) -> float:
+        return self._filter
+    
+    @filter.setter
+    def filter(self, value: float) -> None:
+        self._filter = float(value)
+    
+    @property
+    def aperture_in_mm(self) -> float:
+        return self._aperture
+    
+    @aperture_in_mm.setter
+    def aperture_in_mm(self, value: float) -> float:
+        self._aperture = float(value)
+    
+    @property
+    def opm_is_100khz(self) -> bool:
+        return self._opm_is_100khz
+
+    @property
+    def opm_firmware_version(self) -> str:
+        return self._opm_fw
+    
+    @property
+    def opm_serial_number(self) -> str:
+        return self._opm_serial
+    
+    @property
+    def opm_date_of_manufacturing(self) -> str:
+        return self._opm_date_of_manufacturing
+    
+    @property
+    def opm_detector_serial(self) -> str:
+        return self._opm_detector_serial
+    
+    @property
+    def opm_detector_min_wavelength(self) -> int:
+        return self._opm_detector_min_wavelength
+    
+    @property
+    def opm_detector_max_wavelength(self) -> int:
+        return self._opm_detector_max_wavelength
+    
+    @property
+    def opm_detector_is_integrating_sphere(self) -> bool:
+        return self._opm_detector_is_integrating_sphere
+    
     @staticmethod
     def find_devices() -> list[str]:
         """
@@ -160,15 +212,34 @@ class OPM150():
             self.disconnect()
             return False
         return True
-
-    def disconnect(self) -> None:
-        """
-        Disconnects the connected device.
-        """
-        if self._device is not None:
-            self._device.close()
-            self._device = None
     
+    def _opm_send(self, msg: str):
+        if self._device is None:
+            raise Exception("Send error: port not open.")
+        self._device.purge()
+        self._device.write(msg.encode())
+    
+    def _opm_recv(self) -> str:
+        if self._device is None:
+            raise Exception("recive error: port not open.")
+        msg = b""
+        i = 0
+        while i < self.opm_comm_max_retries:
+            if self._device.getQueueStatus() > 0: # check if bytes in buffer
+                msg = self._device.read(self._device.getQueueStatus()) # read entire buffer
+                while not msg.endswith(b'\r'): # append buffer until '\r' is found
+                    msg = msg + self._device.read(self._device.getQueueStatus())
+
+                if "DET ERR" in msg.decode(errors="ignore"):
+                    raise Exception("No detector connected!")
+                elif "PWR ERR" in msg.decode(errors="ignore"):
+                    raise Exception("OPM doesn't get enough power!")
+                
+                return msg.decode(errors="ignore").replace("\r", '').strip()
+            sleep(0.01)
+            i += 1
+        raise TimeoutError("No Valid Data received.")
+
     def _initialize(self) -> bool:
         info = self.opm_get_info()
 
@@ -207,59 +278,17 @@ class OPM150():
             return False
 
         return True
-    
-    @property
-    def unit(self) -> str:
-        return self._units[self._unit]
-    
-    @property
-    def filter(self) -> float:
-        return self._filter
-    
-    @filter.setter
-    def filter(self, value: float) -> None:
-        self._filter = float(value)
-    
-    @property
-    def aperture_in_mm(self) -> float:
-        return self._aperture
-    
-    @aperture_in_mm.setter
-    def aperture_in_mm(self, value: float) -> float:
-        self._aperture = float(value)
-    
-    @property
-    def opm_is_100khz(self) -> bool:
-        return self._opm_is_100khz
 
-    @property
-    def opm_firmware_version(self) -> str:
-        return self._opm_fw
-    
-    @property
-    def opm_serial_number(self) -> str:
-        return self._opm_serial
-    
-    @property
-    def opm_date_of_manufacturing(self) -> str:
-        return self._opm_date_of_manufacturing
-    
-    @property
-    def opm_detector_serial(self) -> str:
-        return self._opm_detector_serial
-    
-    @property
-    def opm_detector_min_wavelength(self) -> int:
-        return self._opm_detector_min_wavelength
-    
-    @property
-    def opm_detector_max_wavelength(self) -> int:
-        return self._opm_detector_max_wavelength
-    
-    @property
-    def opm_detector_is_integrating_sphere(self) -> bool:
-        return self._opm_detector_is_integrating_sphere
+    def opm_get_info(self) -> str:
+        """
+        Returns the device info as a printable string.
 
+        :return:
+            info(str): Printable device info
+        """
+        self._opm_send("$I")
+        return self._opm_recv()
+    
     def set_unit(self, unit: UNITS) -> bool:
         """
         Sets the specified unit as the unit used for measurements.
@@ -274,6 +303,90 @@ class OPM150():
             return False
         self._unit = unit.value
         return True
+
+    def opm_get_wavelength(self) -> int:
+        """
+        Return the current wavelength:
+
+        :return:
+            wavelength(int): Current wavelength
+        """
+        return self._wavelength
+
+    def opm_set_wavelength(self, wavelength: int) -> bool:
+        """
+        Sets the specified wavelength.
+
+        :param:
+            wavelength(int): Wavelength
+
+        :return:
+            result(bool): Returns whether the wavelength was set successfully
+        """
+        if wavelength not in range(self._opm_detector_min_wavelength, self._opm_detector_max_wavelength + 1):
+            return False
+        
+        self._wavelength = wavelength
+        wavelength = str(wavelength).zfill(4) # convert to string append 0 at beginning of wavelength if wavelength is not 4 bytes long
+
+        self._opm_send("L")
+        for i in wavelength:
+            self._opm_send(i)
+        recv = self._opm_recv()
+
+        if recv.count("KF:") > 0:
+            self._sensitivity = float(recv.replace("KF:", '').replace(',', '.').strip()) # retrieve correction factor from OPM150
+            return True
+        return False
+
+    def opm_get_gain(self) -> str | None:
+        """
+        Returns the current gain.
+
+        :return:
+            gain(str): Current gain in format: x1, x10, ...
+        """
+        self._opm_send("V?")
+        received = self._opm_recv()
+        
+        gain = received.splitlines()
+        if gain[0] == "V? OK" and gain[1] in self._gain_steps.values():
+            if self._gain != "auto-gain":
+                self._gain = dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
+            self._autogain_gain = int(self._gain_steps[dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]][1:])
+            return dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
+        return None
+    
+    def opm_set_gain(self, gain: str | GAIN) -> bool:
+        """
+        Sets the specified gain.
+
+        :param:
+            gain(str | GAIN): Gain to set
+        
+        :return:
+            result(bool): Returns whether the gain was set successfully
+        """
+        if type(gain) == GAIN:
+            gain = str(gain.value)
+
+        if gain not in self._gain_steps.keys():
+            raise Exception("Invalid gain. choose one from the pre-defined gains.")
+
+        if gain == "auto-gain":
+            self._gain = gain
+            return True
+        
+        if self._gain != "auto-gain":
+            self._gain = gain
+        
+        self._autogain_gain = int(self._gain_steps[gain][1:])
+        
+        self._opm_send(self._gain_steps[gain])
+        recv = self._opm_recv()
+        if recv == "{} OK".format(self._gain_steps[gain]):
+            return True
+        return False
 
     def _opm_autogain(self, tmp_amplitude: str, recursion: int = 0, last_operation: int = 0) -> str:
         """
@@ -331,127 +444,6 @@ class OPM150():
         else:
             return tmp_amplitude
 
-    def _opm_send(self, msg: str):
-        if self._device is None:
-            raise Exception("Send error: port not open.")
-        self._device.purge()
-        self._device.write(msg.encode())
-    
-    def _opm_recv(self) -> str:
-        if self._device is None:
-            raise Exception("recive error: port not open.")
-        msg = b""
-        i = 0
-        while i < self.opm_comm_max_retries:
-            if self._device.getQueueStatus() > 0: # check if bytes in buffer
-                msg = self._device.read(self._device.getQueueStatus()) # read entire buffer
-                while not msg.endswith(b'\r'): # append buffer until '\r' is found
-                    msg = msg + self._device.read(self._device.getQueueStatus())
-
-                if "DET ERR" in msg.decode(errors="ignore"):
-                    raise Exception("No detector connected!")
-                elif "PWR ERR" in msg.decode(errors="ignore"):
-                    raise Exception("OPM doesn't get enough power!")
-                
-                return msg.decode(errors="ignore").replace("\r", '').strip()
-            sleep(0.01)
-            i += 1
-        raise TimeoutError("No Valid Data received.")
-    
-    def opm_get_info(self) -> str:
-        """
-        Returns the device info as a printable string.
-
-        :return:
-            info(str): Printable device info
-        """
-        self._opm_send("$I")
-        return self._opm_recv()
-
-    def opm_get_gain(self) -> str | None:
-        """
-        Returns the current gain.
-
-        :return:
-            gain(str): Current gain in format: x1, x10, ...
-        """
-        self._opm_send("V?")
-        received = self._opm_recv()
-        
-        gain = received.splitlines()
-        if gain[0] == "V? OK" and gain[1] in self._gain_steps.values():
-            if self._gain != "auto-gain":
-                self._gain = dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
-            self._autogain_gain = int(self._gain_steps[dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]][1:])
-            return dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
-        return None
-    
-    def opm_set_gain(self, gain: str | GAIN) -> bool:
-        """
-        Sets the specified gain.
-
-        :param:
-            gain(str | GAIN): Gain to set
-        
-        :return:
-            result(bool): Returns whether the gain was set successfully
-        """
-        if type(gain) == GAIN:
-            gain = str(gain.value)
-
-        if gain not in self._gain_steps.keys():
-            raise Exception("Invalid gain. choose one from the pre-defined gains.")
-
-        if gain == "auto-gain":
-            self._gain = gain
-            return True
-        
-        if self._gain != "auto-gain":
-            self._gain = gain
-        
-        self._autogain_gain = int(self._gain_steps[gain][1:])
-        
-        self._opm_send(self._gain_steps[gain])
-        recv = self._opm_recv()
-        if recv == "{} OK".format(self._gain_steps[gain]):
-            return True
-        return False
-    
-    def opm_set_wavelength(self, wavelength: int) -> bool:
-        """
-        Sets the specified wavelength.
-
-        :param:
-            wavelength(int): Wavelength
-
-        :return:
-            result(bool): Returns whether the wavelength was set successfully
-        """
-        if wavelength not in range(self._opm_detector_min_wavelength, self._opm_detector_max_wavelength + 1):
-            return False
-        
-        self._wavelength = wavelength
-        wavelength = str(wavelength).zfill(4) # convert to string append 0 at beginning of wavelength if wavelength is not 4 bytes long
-
-        self._opm_send("L")
-        for i in wavelength:
-            self._opm_send(i)
-        recv = self._opm_recv()
-
-        if recv.count("KF:") > 0:
-            self._sensitivity = float(recv.replace("KF:", '').replace(',', '.').strip()) # retrieve correction factor from OPM150
-            return True
-        return False
-
-    def opm_get_wavelength(self) -> int:
-        """
-        Return the current wavelength:
-
-        :return:
-            wavelength(int): Current wavelength
-        """
-        return self._wavelength
-
     def opm_get_single_raw_measure(self) -> str:
         """
         Returns a single raw measurement result in the format: I1,0nA or I1,0uA
@@ -505,3 +497,11 @@ class OPM150():
             amplitude = amplitude / (((self._aperture**2) / 400) * math.pi)
 
         return [amplitude, self._unit]
+    
+    def disconnect(self) -> None:
+        """
+        Disconnects the connected device.
+        """
+        if self._device is not None:
+            self._device.close()
+            self._device = None
