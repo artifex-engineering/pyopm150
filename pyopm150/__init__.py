@@ -434,9 +434,9 @@ class OPM150():
             self._autogain_gain -= 1
             self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # set new gain
             return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 1) # return new measurement or re-adjust gain
-        elif level < 8.0 and self._autogain_gain < 5:
+        elif level < 8.0 and self._autogain_gain < (len(self._gain_steps) - 1):
             if last_operation == 1: # prevent jumping between to gain leves
-                recursion = 6
+                recursion = len(self._gain_steps)
             self._autogain_gain += 1
             self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # set new gain
             return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 2) # return new measurement or re-adjust gain
@@ -504,3 +504,4 @@ class OPM150():
         if self._device is not None:
             self._device.close()
             self._device = None
+        self.__init__()
