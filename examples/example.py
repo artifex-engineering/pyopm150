@@ -14,7 +14,7 @@ print("OPM150 is 100 kHz: {}\n\n".format(opm.opm_is_100khz))
 print("Detector serial number: {}".format(opm.opm_detector_serial))
 print("Detector min wavelength: {}".format(opm.opm_detector_min_wavelength))
 print("Detector max wavelength: {}".format(opm.opm_detector_max_wavelength))
-print("Detector is integrating sphere: {}\n\n".format(opm._opm_detector_is_integrating_sphere))
+print("Detector is integrating sphere: {}\n\n".format(opm.opm_detector_is_integrating_sphere))
 
 print("Device info:\n{}\n\n".format(opm.opm_get_info()))
 
