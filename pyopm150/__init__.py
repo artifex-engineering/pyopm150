@@ -167,7 +167,7 @@ class OPM150():
         devices_found = []
 
         if sys.platform != "win32":
-            ftd2xx.setVIDPID(0x0403, 0x9a69) # for linux and macOS
+            ftd2xx.setVIDPID(0x0403, 0x9a69) # For linux and macOS
 
         numDevs = ftd2xx.createDeviceInfoList()
 
@@ -201,11 +201,11 @@ class OPM150():
             self._device = ftd2xx.openEx(self._port.encode())
             self._device.setBaudRate(115200)
             self._device.setDataCharacteristics(8, 0, 0) # 8 data bits, 1 stop bit, no parity
-            self._device.setFlowControl(0, 0, 0) # no flow control
+            self._device.setFlowControl(0, 0, 0) # No flow control
             self._device.setTimeouts(1000, 0)
             self._device.setChars(126, 1, 0, 0)
             self._device.resetDevice()
-            self._device.purge()
+            self._device.purge() # Purge receive/transmit buffers
         except ftd2xx.DeviceError:
             raise Exception("Cannot open Device with serial number {}.".format(self._port))
         if not self._initialize():
@@ -216,19 +216,19 @@ class OPM150():
     def _opm_send(self, msg: str):
         if self._device is None:
             raise Exception("Send error: port not open.")
-        self._device.purge()
+        self._device.purge() # Purge receive/transmit buffers
         self._device.write(msg.encode())
     
     def _opm_recv(self) -> str:
         if self._device is None:
-            raise Exception("recive error: port not open.")
+            raise Exception("Recive error: port not open.")
         msg = b""
         i = 0
         while i < self._opm_comm_max_retries:
-            if self._device.getQueueStatus() > 0: # check if bytes in buffer
+            if self._device.getQueueStatus() > 0: # Check if bytes in buffer
                 msg = self._device.read(self._device.getQueueStatus()) # read entire buffer
-                while not msg.endswith(b'\r'): # append buffer until '\r' is found
-                    msg = msg + self._device.read(self._device.getQueueStatus())
+                while not msg.endswith(b'\r'): # Append buffer until '\r' is found
+                    msg += self._device.read(self._device.getQueueStatus())
 
                 if "DET ERR" in msg.decode(errors="ignore"):
                     raise Exception("No detector connected!")
@@ -254,23 +254,23 @@ class OPM150():
         regex_detector_min_wavelength = re.sub(r"(?:\n|.*$)*detector:.*?(?:[a-z][0-9]+).*?([0-9]+)nm(?:\n|.*$)*", "\\1", info, count=0, flags=re.MULTILINE | re.IGNORECASE)
         regex_detector_max_wavelength = re.sub(r"(?:\n|.*$)*detector:.*?(?:[a-z][0-9]+).*?(?:[0-9]+)nm.*?([0-9]+)nm(?:\n|.*$)*", "\\1", info, count=0, flags=re.MULTILINE | re.IGNORECASE)
 
-        self._opm_fw = regex_fw if regex_fw != info else "" # get OPM150 Firmware version
-        if info.count("100kHz") > 0: # check if "100kHz" in Identifier String
+        self._opm_fw = regex_fw if regex_fw != info else "" # Get OPM150 Firmware version
+        if info.count("100kHz") > 0: # Check if "100kHz" is in Identifier String
             self._opm_is_100khz = True
 
-        self._opm_serial = regex_serial if regex_serial != info else "" # get OPM150 serial number
-        self._opm_date_of_manufacturing = regex_date_of_manufacturing if regex_date_of_manufacturing != info else "" # get OPM150 date of Manufacturing
+        self._opm_serial = regex_serial if regex_serial != info else "" # Get OPM150 serial number
+        self._opm_date_of_manufacturing = regex_date_of_manufacturing if regex_date_of_manufacturing != info else "" # Get OPM150 date of Manufacturing
 
-        self._opm_detector_serial = regex_detector_serial if regex_detector_serial != info else "" # get detector serial number
-        self._opm_detector_min_wavelength = int(regex_detector_min_wavelength) if regex_detector_min_wavelength != info else -1 # get detector min wavelength
-        self._opm_detector_max_wavelength = int(regex_detector_max_wavelength) if regex_detector_max_wavelength != info else -1 # get detector max wavelength
+        self._opm_detector_serial = regex_detector_serial if regex_detector_serial != info else "" # Get detector serial number
+        self._opm_detector_min_wavelength = int(regex_detector_min_wavelength) if regex_detector_min_wavelength != info else -1 # Get detector min wavelength
+        self._opm_detector_max_wavelength = int(regex_detector_max_wavelength) if regex_detector_max_wavelength != info else -1 # Get detector max wavelength
 
-        if self._opm_detector_serial[0] in ["U", "V", "W", "X"]: # check if detector is integrating sphere and adjust paramters
+        if self._opm_detector_serial[0] in ["U", "V", "W", "X"]: # Check if the detector is an integrating sphere and adjust paramters
             self._opm_detector_is_integrating_sphere = True
             opm_detector_power_multiplier = 10**-int(self._opm_detector_serial[1:2])
             self._sensitivity = self._sensitivity * opm_detector_power_multiplier
     
-        # set default values
+        # Set default values
         if not self.opm_set_wavelength(self._wavelength):
             return False
         
@@ -327,7 +327,7 @@ class OPM150():
             return False
         
         tmp_wavelength = wavelength
-        wavelength = str(wavelength).zfill(4) # convert to string append 0 at beginning of wavelength if wavelength is not 4 bytes long
+        wavelength = str(wavelength).zfill(4) # Convert to string append 0 at beginning of wavelength if wavelength is not 4 bytes long
 
         self._opm_send("L")
         for i in wavelength:
@@ -336,7 +336,7 @@ class OPM150():
 
         if recv.count("KF:") > 0:
             self._wavelength = tmp_wavelength
-            self._sensitivity = float(recv.replace("KF:", '').replace(',', '.').strip()) # retrieve correction factor from OPM150
+            self._sensitivity = float(recv.replace("KF:", '').replace(',', '.').strip()) # Retrieve correction factor from OPM150
             return True
         return False
 
@@ -355,7 +355,7 @@ class OPM150():
             if self._gain != "auto-gain":
                 self._gain = dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
             self._autogain_gain = int(self._gain_steps[dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]][1:])
-            return dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
+            return ("Auto: " if self._gain == "auto-gain" else "") + dict(zip(self._gain_steps.values(), self._gain_steps.keys()))[gain[1]]
         return None
     
     def opm_set_gain(self, gain: str | GAIN) -> bool:
@@ -397,7 +397,7 @@ class OPM150():
             return tmp_amplitude
         
         if self._autogain_gain is None:
-            self.opm_get_gain() # get gain as int if not already set
+            self.opm_get_gain() # Get gain as int if not already set
 
         amplitude = float(tmp_amplitude[:-2].replace(",", "."))
 
@@ -432,14 +432,14 @@ class OPM150():
 
         if level > 90.0 and self._autogain_gain > 1:
             self._autogain_gain -= 1
-            self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # set new gain
-            return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 1) # return new measurement or re-adjust gain
+            self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # Set new gain
+            return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 1) # Return new measurement or re-adjust gain
         elif level < 8.0 and self._autogain_gain < (len(self._gain_steps) - 1):
-            if last_operation == 1: # prevent jumping between to gain leves
+            if last_operation == 1: # Prevent jumping between two gain leves
                 recursion = len(self._gain_steps)
             self._autogain_gain += 1
-            self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # set new gain
-            return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 2) # return new measurement or re-adjust gain
+            self.opm_set_gain(dict(zip(self._gain_steps.values(), self._gain_steps.keys()))["V{}".format(self._autogain_gain)]) # Set new gain
+            return self._opm_autogain(self.opm_get_single_raw_measure(), recursion + 1, 2) # Return new measurement or re-adjust gain
         else:
             return tmp_amplitude
 
@@ -451,7 +451,7 @@ class OPM150():
             measurement(str): Raw measurement value in the format: I1,0nA or I1,0uA
         """
         self._opm_send("$E")
-        return self._opm_recv()[1:].strip() # remove 'I' prefix from response
+        return self._opm_recv()[1:].strip() # Remove 'I' prefix from response
 
     def opm_get_measurement(self) -> list[float, str]:
         """
@@ -461,15 +461,15 @@ class OPM150():
             list[value(float): Measured value, unit(str): Selected unit]
         """
         amplitude = self.opm_get_single_raw_measure()
-        if self._gain == "auto-gain": # adjust gain if auto-gain is chosen
+        if self._gain == "auto-gain": # Adjust gain if auto-gain is chosen
             amplitude = self._opm_autogain(amplitude)
-        unit = amplitude[amplitude.find("A")-1:] # get unit from last two bytes of the response
+        unit = amplitude[amplitude.find("A")-1:] # Get unit from last two bytes of the response
 
         amplitude = amplitude[:-2].replace(",", ".")
         amplitude = float(amplitude)
 
         if unit == "uA":
-            amplitude *= 1000 # convert µA to nA
+            amplitude *= 1000 # Convert µA to nA
 
         sensitivity = 1.0
         if self._unit not in ["nA", "µA", "mA", "A"]:
@@ -480,16 +480,16 @@ class OPM150():
         if self._unit.startswith("n"):
             amplitude = round(amplitude, 3)
         elif self._unit.startswith("µ"):
-            amplitude /= 1000 # nano to micro
+            amplitude /= 1000 # Nano to micro
             amplitude = round(amplitude, 6)
         elif self._unit.startswith("m"):
-            amplitude /= 1000000 # nano to milli
+            amplitude /= 1000000 # Nano to milli
             amplitude = round(amplitude, 9)
         elif self._unit == "dBm":
             amplitude = 10 * math.log10(amplitude / 1000000)
             amplitude = round(amplitude, 5)
         else:
-            amplitude /= 1000000000 # for A and W
+            amplitude /= 1000000000 # For A and W
             amplitude = round(amplitude, 12)
             
         if self._unit in ["nW/cm²", "µW/cm²", "mW/cm²", "W/cm²"]:
