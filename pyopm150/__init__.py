@@ -228,7 +228,9 @@ class OPM150():
             if self._device.getQueueStatus() > 0: # Check if bytes in buffer
                 msg = self._device.read(self._device.getQueueStatus()) # read entire buffer
                 while not msg.endswith(b'\r'): # Append buffer until '\r' is found
-                    msg += self._device.read(self._device.getQueueStatus())
+                    queue_status = self._device.getQueueStatus()
+                    if queue_status > 0:
+                        msg += self._device.read(queue_status)
 
                 if "DET ERR" in msg.decode(errors="ignore"):
                     raise Exception("No detector connected!")
